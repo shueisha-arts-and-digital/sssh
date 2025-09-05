@@ -10,7 +10,7 @@
 
 ## Install
 ```bash
-git clone https://github.com/pj8/sssh.git
+git clone https://github.com/shueisha-arts-and-digital/sssh.git
 cd sssh
 ./sssh
 ```
