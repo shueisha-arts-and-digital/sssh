@@ -1,3 +1,7 @@
+# ARCHIVED
+- [ECS Exec is now available in the AWS Management Console
+](https://aws.amazon.com/jp/about-aws/whats-new/2025/09/ecs-exec-aws-management-console/)
+
 # sssh
 ## About
 - Bash script to run ecs-exec on Amazon ECS Fargate containers.
