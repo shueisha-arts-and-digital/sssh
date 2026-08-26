@@ -40,7 +40,7 @@ cd sssh
 # Help
 ./sssh --help
 ```
-**Note**: Before running the script, ensure that your AWS CLI session profile is configured to output in JSON format. Otherwise, the script will crash. You can set the output format as JSON when you run `aws configure`.
+**Note**: Before running the script, ensure that the AWS CLI profile you use is configured to output in JSON format. Otherwise, the script will crash. Running `aws configure` only sets the `default` profile, so configure the profile you pass to `--profile` explicitly: `aws configure set output json --profile foo-profile`.
 
 **Note**: The exit code of the remote command is NOT reflected in the exit code of this script (an ECS Exec limitation), so it is not suitable for CI pipelines.
 

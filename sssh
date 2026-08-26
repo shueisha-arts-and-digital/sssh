@@ -44,7 +44,7 @@ die() {
 optValue() {
   local val="${1#*=}"
   [[ -n "$val" ]] || die "Value must be specified in ${1%%=*}"
-  echo "$val"
+  printf '%s\n' "$val"
 }
 
 function print_help() {
@@ -215,7 +215,8 @@ main(){
 
   # Build the final command as a bash array so that arguments containing
   # spaces (e.g. --command 'php -v') keep their word boundaries.
-  # ${awsParams[@]+...} guards the empty-array case under set -u on bash 3.2.
+  # ${awsParams[@]+...} guards against "unbound variable" under set -u on
+  # bash 3.2, which treats an empty array as unset.
   awsParams=()
   [[ -n "${profile:-}" ]] && awsParams+=(--profile "$profile")
   [[ -n "${region:-}" ]] && awsParams+=(--region "$region")
