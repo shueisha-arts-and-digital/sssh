@@ -40,6 +40,13 @@ die() {
   exit 1
 }
 
+# Extract the value from an "--opt=value" style argument.
+optValue() {
+  local val="${1#*=}"
+  [[ -n "$val" ]] || die "Value must be specified in ${1%%=*}"
+  echo "$val"
+}
+
 function print_help() {
   cat >&2 <<-END
 This script simplifies the process of getting the required information to drop into an
@@ -47,10 +54,10 @@ interactive shell script on your container hosted on Fargate/ECS.
 Example:
 ./sssh --region us-west-2
 ./sssh --profile default
-Supported input parameters:
+Supported input parameters (both "--opt value" and "--opt=value" forms work):
  -r | --region      : AWS Region to fetch the cluster, service, task
  -p | --profile     : AWS Profile for credentials and region.
- -c | --command     : Command to execute, defaults to '/bin/sh'/
+ -c | --command     : Command to execute, defaults to '/bin/sh'.
       --cluster     : Cluster name.
       --service     : Service name.
       --task        : Task name.
@@ -62,6 +69,14 @@ The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
 If you want to execute a different command or shell, you can pass it in like so:
 ./sssh --command '/bin/bash'
+./sssh --command 'php -v'
+Pipes, redirects, and variable expansion require an explicit shell:
+./sssh --command 'sh -c "php -v | head -n 1"'
+Note: the exit code of the remote command is NOT reflected in the exit code of
+this script (an ECS Exec limitation).
+Note: do not embed passwords or tokens in --command. The command line is shown
+on screen, kept in your local shell history, and recorded in CloudTrail; with
+ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
 You need active (unexpired) AWS credentials, otherwise, the script will crash.
 END
 }
@@ -75,7 +90,7 @@ main(){
         exit
         ;;
       -v|--version)
-        echo "sssh version v4.1.1"
+        echo "sssh version v4.2.0"
         exit
         ;;
       -r|--region)
@@ -83,56 +98,67 @@ main(){
         region="${1:?Region must be specified in --region}"
         shift
         ;;
+      --region=*) region=$(optValue "$1"); shift ;;
       -p|--profile)
         shift
         profile="${1:?Profile must be specified in --profile}"
         shift
         ;;
+      --profile=*) profile=$(optValue "$1"); shift ;;
       -o|--otp)
         shift
         otp="${1:?OTP must be specified in --otp}"
         shift
         ;;
+      --otp=*) otp=$(optValue "$1"); shift ;;
       -c|--command)
         shift
         command="${1:?Command must be specified in --command}"
         shift
         ;;
+      --command=*) command=$(optValue "$1"); shift ;;
       --cluster)
         shift
         cluster="${1:?Cluster must be specified in --cluster}"
         shift
         ;;
+      --cluster=*) cluster=$(optValue "$1"); shift ;;
       --service)
         shift
         service="${1:?Service must be specified in --service}"
         shift
         ;;
+      --service=*) service=$(optValue "$1"); shift ;;
       --task)
         shift
         task="${1:?Task must be specified in --task}"
         shift
         ;;
+      --task=*) task=$(optValue "$1"); shift ;;
       --container)
         shift
         container="${1:?Container must be specified in --container}"
         shift
         ;;
+      --container=*) container=$(optValue "$1"); shift ;;
       --remote-host)
         shift
         remoteHost="${1:?remote-host must be specified in --remote-host}"
         shift
         ;;
+      --remote-host=*) remoteHost=$(optValue "$1"); shift ;;
       --remote-port)
         shift
         remotePort="${1:?remote-port must be specified in --remote-port}"
         shift
         ;;
+      --remote-port=*) remotePort=$(optValue "$1"); shift ;;
       --local-port)
         shift
         localPort="${1:?local-port must be specified in --local-port}"
         shift
         ;;
+      --local-port=*) localPort=$(optValue "$1"); shift ;;
       *)
         die "Unknown param $1"
         ;;
@@ -187,18 +213,25 @@ main(){
   colorEcho Container: $container
   echo_stderr
 
+  # Build the final command as a bash array so that arguments containing
+  # spaces (e.g. --command 'php -v') keep their word boundaries.
+  # ${awsParams[@]+...} guards the empty-array case under set -u on bash 3.2.
+  awsParams=()
+  [[ -n "${profile:-}" ]] && awsParams+=(--profile "$profile")
+  [[ -n "${region:-}" ]] && awsParams+=(--region "$region")
+
   # None of the remotePort, localPort, remoteHost parameters are supplied.
   if [ -z ${remotePort+x} ] && [ -z ${localPort+x} ] && [ -z ${remoteHost+x} ]; then
-    cmd="aws ecs execute-command $(params) --cluster $cluster --container $container --task $task --interactive --command '$command'"
+    cmd=(aws ecs execute-command ${awsParams[@]+"${awsParams[@]}"} --cluster "$cluster" --container "$container" --task "$task" --interactive --command "$command")
   else
     taskId=$(echo $task | awk -F '/' '{print $3}')
     containerId=$(aws ecs describe-tasks $(params) --cluster $cluster --task $task | jq -r --arg container $container '.tasks[0].containers[] | select(.name == $container).runtimeId')
-    cmd="aws ssm start-session $(params) --target ecs:${cluster}_${taskId}_${containerId} --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters {\"host\":[\"${remoteHost:-"127.0.0.1"}\"],\"portNumber\":[\"${remotePort:-"3306"}\"],\"localPortNumber\":[\"$localPort\"]}"
+    cmd=(aws ssm start-session ${awsParams[@]+"${awsParams[@]}"} --target "ecs:${cluster}_${taskId}_${containerId}" --document-name AWS-StartPortForwardingSessionToRemoteHost --parameters "{\"host\":[\"${remoteHost:-127.0.0.1}\"],\"portNumber\":[\"${remotePort:-3306}\"],\"localPortNumber\":[\"$localPort\"]}")
   fi
 
-  colorEcho $cmd
-  $cmd
+  colorEcho "${cmd[@]}"
+  "${cmd[@]}"
 }
 
 # Execute main function and pass all params over
-main $@
+main "$@"
