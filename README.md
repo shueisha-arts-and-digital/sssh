@@ -24,6 +24,13 @@ cd sssh
 # Select profile, cluster, service, container, and task, and run sh
 ./sssh
 
+# Run a one-off command on the container ("--opt value" and "--opt=value" both work)
+./sssh --command "php -v"
+./sssh --command="php -v"
+
+# Pipes, redirects, and variable expansion require an explicit shell
+./sssh --command 'sh -c "php -v | head -n 1"'
+
 # Run port forwarding
 ./sssh --remote-host rds.example.com --remote-port 3306 --local-port 13306
 
@@ -33,7 +40,11 @@ cd sssh
 # Help
 ./sssh --help
 ```
-**Note**: Before running the script, ensure that your AWS CLI session profile is configured to output in JSON format. Otherwise, the script will crash. You can set the output format as JSON when you run `aws configure sso`.
+**Note**: Before running the script, ensure that the AWS CLI profile you use is configured to output in JSON format. Otherwise, the script will crash. Running `aws configure` only sets the `default` profile, so configure the profile you pass to `--profile` explicitly: `aws configure set output json --profile foo-profile`.
+
+**Note**: The exit code of the remote command is NOT reflected in the exit code of this script (an ECS Exec limitation), so it is not suitable for CI pipelines.
+
+**Note**: Do not embed passwords or tokens in `--command`. The command line is shown on screen, kept in your local shell history, and recorded in CloudTrail; with ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
 
 ## Special thanks to contributor
 - [leewc](https://github.com/leewc)
