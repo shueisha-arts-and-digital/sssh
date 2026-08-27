@@ -255,54 +255,26 @@ main(){
   colorEcho "${cmd[@]}"
   if [[ -n "$captureExit" ]]; then
     markerFile=$(mktemp)
-    # Stream the output through byte-for-byte (NUL-safe, so binary output
-    # like tar streams survives), while scanning for the marker, which may
-    # appear mid-stream (the Session Manager "Exiting session" banner follows
-    # it). On a match, the exit code (1-3 digits) and one trailing newline
-    # are removed from the stream and the code is stored in markerFile;
-    # everything else, before and after, is passed through verbatim. The
-    # marker contains a per-run random id, so regular output cannot fake it.
-    "${cmd[@]}" | perl -e '
-      binmode STDIN; binmode STDOUT;
-      my ($m, $f) = @ARGV;
-      my $keep = length($m) + 8;
-      my ($buf, $found) = ("", 0);
-      my $scan = sub {
-        my ($eof) = @_;
-        while (1) {
-          my $p = index($buf, $m);
-          if ($p < 0) {
-            if ($eof) { print $buf; $buf = ""; }
-            elsif (length($buf) > $keep) { print substr($buf, 0, length($buf) - $keep, ""); }
-            return;
-          }
-          my $rest = substr($buf, $p + length($m));
-          # Digits (or their terminating newline) may still be in flight.
-          return if !$eof && $rest =~ /^\d{0,3}\r?\z/;
-          if ($rest =~ /^(\d{1,3})(?!\d)/) {
-            print substr($buf, 0, $p);
-            open(my $fh, ">", $f) or die "sssh: cannot write $f: $!\n";
-            print $fh $1;
-            close $fh;
-            $buf = substr($rest, length($1));
-            $buf =~ s/^\r?\n//;
-            $found = 1;
-            print $buf;
-            $buf = "";
-            return;
-          }
-          # Marker-lookalike without a valid code: emit it and keep scanning.
-          print substr($buf, 0, $p + length($m), "");
+    # The marker+digits at the end of a record is the exit code; anything
+    # before it on the same record is command output that did not end with a
+    # newline (e.g. printf without \n), so emit it verbatim without adding
+    # one. Only the trailing \r that Session Manager may append after the
+    # code is stripped before matching. The marker contains a per-run random
+    # id, so regular output cannot fake it.
+    "${cmd[@]}" | awk -v m="$exitMarker" -v f="$markerFile" '{
+      i = index($0, m)
+      if (i > 0) {
+        c = substr($0, i + length(m))
+        sub(/\r+$/, "", c)
+        if (c ~ /^[0-9]+$/) {
+          print c > f
+          if (i > 1) printf "%s", substr($0, 1, i - 1)
+          next
         }
-      };
-      while (read(STDIN, my $chunk, 65536)) {
-        if ($found) { print $chunk; next; }
-        $buf .= $chunk;
-        $scan->(0);
       }
-      $scan->(1) unless $found;
-    ' "$exitMarker" "$markerFile"
-    # The pipeline status above is perl's, so grab aws's separately.
+      print
+    }'
+    # The pipeline status above is awk's, so grab aws's separately.
     awsExit=${PIPESTATUS[0]}
     remoteExit=$(cat "$markerFile")
     rm -f "$markerFile"
