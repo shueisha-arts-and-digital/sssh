@@ -11,6 +11,7 @@
 - [Session Manager plugin for the AWS CLI](https://docs.aws.amazon.com/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
 - [jq](https://stedolan.github.io/jq/download/)
 - [peco](https://github.com/peco/peco#installation)
+- perl (preinstalled on macOS and most Linux distributions; used to relay the remote exit code)
 
 ## Install
 ```bash
@@ -44,7 +45,7 @@ cd sssh
 ```
 **Note**: Before running the script, ensure that the AWS CLI profile you use is configured to output in JSON format. Otherwise, the script will crash. Running `aws configure` only sets the `default` profile, so configure the profile you pass to `--profile` explicitly: `aws configure set output json --profile foo-profile`.
 
-**Note**: Since v5.0.0, when `--command` is given, it is wrapped in `/bin/sh -c ...` and the exit code of the remote command becomes the exit code of this script, which makes it usable from CI pipelines and AI agents. For an interactive shell, run without `--command` (the exit code capture would garble interactive prompts, so it is disabled in that case; the exit code is then not reflected, an ECS Exec limitation).
+**Note**: Since v5.0.0, when `--command` is given, it is wrapped in `/bin/sh -c ...` and the exit code of the remote command becomes the exit code of this script, which makes it usable from CI pipelines and AI agents. The output passes through byte-for-byte (NUL-safe), so binary output such as tar streams also survives. For an interactive shell, run without `--command` (the exit code capture would garble interactive prompts, so it is disabled in that case; the exit code is then not reflected, an ECS Exec limitation).
 
 **Note**: Since v5.0.0, all informational messages (date, Profile/Cluster/Service/Task/Container, the executed command line) go to stderr. stdout carries only the output of the remote command, so `./sssh --command 'php -v' | grep PHP` works as expected.
 
