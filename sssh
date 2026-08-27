@@ -86,6 +86,10 @@ END
 
 main(){
   command='/bin/sh'
+  # Initialize explicitly so exported environment variables with the same
+  # names cannot enable these modes.
+  commandSpecified=
+  exitCodeMode=
   while [[ "$#" -gt 0 ]]; do
     case $1 in
       -h|--help)
@@ -175,7 +179,7 @@ main(){
 
   if [[ -n "${exitCodeMode:-}" ]]; then
     [[ -n "${commandSpecified:-}" ]] || die "--exit-code requires --command"
-    if [ ! -z ${remotePort+x} ] || [ ! -z ${localPort+x} ] || [ ! -z ${remoteHost+x} ]; then
+    if [ -n "${remotePort+x}" ] || [ -n "${localPort+x}" ] || [ -n "${remoteHost+x}" ]; then
       die "--exit-code cannot be used with port forwarding"
     fi
     # Make the remote shell print its exit code on a marker line. The ( )
