@@ -175,13 +175,16 @@ main(){
   # is collected locally. The ( ) subshell keeps a plain "exit N" from
   # skipping the echo. The command is single-quoted (embedded ' escaped as
   # '\'') so that nothing in it is interpreted before the inner /bin/sh runs
-  # it, and $? is expanded only by that inner shell.
+  # it, and $? is expanded only by that inner shell. A real newline before
+  # the closing paren keeps a trailing "# comment" in the command from
+  # commenting out the marker echo.
   captureExit=
   if [[ -n "${commandSpecified:-}" ]] && [ -z "${remotePort+x}" ] && [ -z "${localPort+x}" ] && [ -z "${remoteHost+x}" ]; then
     captureExit=1
     exitMarker="__SSSH_EXIT_${RANDOM}${RANDOM}__:"
     escapedCommand=${command//\'/\'\\\'\'}
-    command="/bin/sh -c '(${escapedCommand}); echo ${exitMarker}\$?'"
+    command="/bin/sh -c '(${escapedCommand}
+); echo ${exitMarker}\$?'"
   fi
 
   date >&2
