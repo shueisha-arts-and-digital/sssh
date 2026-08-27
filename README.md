@@ -31,6 +31,9 @@ cd sssh
 # Pipes, redirects, and variable expansion require an explicit shell
 ./sssh --command 'sh -c "php -v | head -n 1"'
 
+# Get the remote command's exit code (opt-in)
+./sssh --command 'exit 7' --exit-code ; echo $?  # => 7
+
 # Run port forwarding
 ./sssh --remote-host rds.example.com --remote-port 3306 --local-port 13306
 
@@ -42,7 +45,9 @@ cd sssh
 ```
 **Note**: Before running the script, ensure that the AWS CLI profile you use is configured to output in JSON format. Otherwise, the script will crash. Running `aws configure` only sets the `default` profile, so configure the profile you pass to `--profile` explicitly: `aws configure set output json --profile foo-profile`.
 
-**Note**: The exit code of the remote command is NOT reflected in the exit code of this script (an ECS Exec limitation), so it is not suitable for CI pipelines.
+**Note**: By default, the exit code of the remote command is NOT reflected in the exit code of this script (an ECS Exec limitation). Use `--exit-code` to opt in; the command is then wrapped in `/bin/sh -c` and the exit code is relayed, which makes it usable from CI pipelines and AI agents.
+
+**Note**: Since v5.0.0, all informational messages (date, Profile/Cluster/Service/Task/Container, the executed command line) go to stderr. stdout carries only the output of the remote command, so `./sssh --command 'php -v' | grep PHP` works as expected.
 
 **Note**: Do not embed passwords or tokens in `--command`. The command line is shown on screen, kept in your local shell history, and recorded in CloudTrail; with ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
 
