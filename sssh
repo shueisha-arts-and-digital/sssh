@@ -274,10 +274,19 @@ main(){
       }
       print
     }'
+    # The pipeline status above is awk's, so grab aws's separately.
+    awsExit=${PIPESTATUS[0]}
     remoteExit=$(cat "$markerFile")
     rm -f "$markerFile"
-    [[ -n "$remoteExit" ]] || die "Could not detect the remote exit code (the remote command may not have started)."
-    exit "$remoteExit"
+    # The marker means the remote command ran to completion; its code wins.
+    if [[ -n "$remoteExit" ]]; then
+      exit "$remoteExit"
+    fi
+    if [[ "$awsExit" -ne 0 ]]; then
+      echo_stderr "aws ecs execute-command failed with exit code ${awsExit}."
+      exit "$awsExit"
+    fi
+    die "Could not detect the remote exit code (the remote command may not have started)."
   fi
   "${cmd[@]}"
 }
