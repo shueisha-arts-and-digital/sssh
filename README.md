@@ -46,6 +46,8 @@ cd sssh
 
 **Note**: Since v5.0.0, when `--command` is given, it is wrapped in `/bin/sh -c ...` and the exit code of the remote command becomes the exit code of this script, which makes it usable from CI pipelines and AI agents. For an interactive shell, run without `--command` (the exit code capture would garble interactive prompts, so it is disabled in that case; the exit code is then not reflected, an ECS Exec limitation).
 
+**Note**: ECS Exec runs the remote command on a PTY (pseudo-terminal) inside the SSM agent, so stdout is text-oriented (e.g. `\n` may be translated to `\r\n`). Binary output such as tar/gzip streams is NOT preserved — this is an ECS Exec limitation, not an sssh one. Transfer files via S3 or similar instead.
+
 **Note**: Since v5.0.0, all informational messages (date, Profile/Cluster/Service/Task/Container, the executed command line) go to stderr. stdout carries only the output of the remote command, so `./sssh --command 'php -v' | grep PHP` works as expected.
 
 **Note**: Do not embed passwords or tokens in `--command`. The command line is shown on screen, kept in your local shell history, and recorded in CloudTrail; with ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
