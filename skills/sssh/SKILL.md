@@ -53,7 +53,8 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
        --container app --command "php -v"
 
 # パイプ、リダイレクト、変数展開を使う場合は明示的にシェルを経由する
-./sssh --command 'sh -c "php -v | head -n 1"'
+./sssh --profile my-profile --cluster my-cluster --service my-service \
+       --container app --command 'sh -c "php -v | head -n 1"'
 ```
 
 ## ポートフォワード
