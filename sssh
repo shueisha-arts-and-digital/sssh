@@ -28,7 +28,7 @@ colorEcho(){
     color=$green
   fi
 
-  echo -e "${color}$@${reset}"
+  echo -e "${color}$@${reset}" >&2
 }
 
 echo_stderr() {
@@ -67,13 +67,14 @@ Supported input parameters (both "--opt value" and "--opt=value" forms work):
       --local-port  : Local port number for port forward.
 The default command executed on the selected container is '/bin/sh'.
 If a region is not provided, the script will attempt to use your region set in the profile.
-If you want to execute a different command or shell, you can pass it in like so:
-./sssh --command '/bin/bash'
+If you want to execute a different command, you can pass it in like so:
 ./sssh --command 'php -v'
-Pipes, redirects, and variable expansion require an explicit shell:
-./sssh --command 'sh -c "php -v | head -n 1"'
-Note: the exit code of the remote command is NOT reflected in the exit code of
-this script (an ECS Exec limitation).
+When --command is given, it is wrapped in "/bin/sh -c ...", so pipes work
+directly, and the exit code of the remote command becomes the exit code of
+this script:
+./sssh --command 'exit 7' ; echo $?  # => 7
+For an interactive shell, run without --command (the exit code capture would
+garble interactive prompts, so it is disabled in that case).
 Note: do not embed passwords or tokens in --command. The command line is shown
 on screen, kept in your local shell history, and recorded in CloudTrail; with
 ECS Exec logging enabled it may also be stored in CloudWatch Logs / S3.
@@ -83,6 +84,9 @@ END
 
 main(){
   command='/bin/sh'
+  # Initialize explicitly so an exported environment variable with the same
+  # name cannot affect the behavior.
+  commandSpecified=
   while [[ "$#" -gt 0 ]]; do
     case $1 in
       -h|--help)
@@ -90,7 +94,7 @@ main(){
         exit
         ;;
       -v|--version)
-        echo "sssh version v4.2.0"
+        echo "sssh version v5.0.0"
         exit
         ;;
       -r|--region)
@@ -114,9 +118,10 @@ main(){
       -c|--command)
         shift
         command="${1:?Command must be specified in --command}"
+        commandSpecified=1
         shift
         ;;
-      --command=*) command=$(optValue "$1"); shift ;;
+      --command=*) command=$(optValue "$1"); commandSpecified=1; shift ;;
       --cluster)
         shift
         cluster="${1:?Cluster must be specified in --cluster}"
@@ -165,7 +170,24 @@ main(){
     esac
   done
 
-  date
+  # When a command is given (and this is not a port forward), propagate the
+  # remote exit code: make the remote shell print it on a marker line that
+  # is collected locally. The ( ) subshell keeps a plain "exit N" from
+  # skipping the echo. The command is single-quoted (embedded ' escaped as
+  # '\'') so that nothing in it is interpreted before the inner /bin/sh runs
+  # it, and $? is expanded only by that inner shell. A real newline before
+  # the closing paren keeps a trailing "# comment" in the command from
+  # commenting out the marker echo.
+  captureExit=
+  if [[ -n "${commandSpecified:-}" ]] && [ -z "${remotePort+x}" ] && [ -z "${localPort+x}" ] && [ -z "${remoteHost+x}" ]; then
+    captureExit=1
+    exitMarker="__SSSH_EXIT_${RANDOM}${RANDOM}__:"
+    escapedCommand=${command//\'/\'\\\'\'}
+    command="/bin/sh -c '(${escapedCommand}
+); echo ${exitMarker}\$?'"
+  fi
+
+  date >&2
 
   echo_stderr "Select AWS Profile"
   if [ -z ${profile+x} ]; then
@@ -231,6 +253,41 @@ main(){
   fi
 
   colorEcho "${cmd[@]}"
+  if [[ -n "$captureExit" ]]; then
+    markerFile=$(mktemp)
+    # The marker+digits at the end of a record is the exit code; anything
+    # before it on the same record is command output that did not end with a
+    # newline (e.g. printf without \n), so emit it verbatim without adding
+    # one. Only the trailing \r that Session Manager may append after the
+    # code is stripped before matching. The marker contains a per-run random
+    # id, so regular output cannot fake it.
+    "${cmd[@]}" | awk -v m="$exitMarker" -v f="$markerFile" '{
+      i = index($0, m)
+      if (i > 0) {
+        c = substr($0, i + length(m))
+        sub(/\r+$/, "", c)
+        if (c ~ /^[0-9]+$/) {
+          print c > f
+          if (i > 1) printf "%s", substr($0, 1, i - 1)
+          next
+        }
+      }
+      print
+    }'
+    # The pipeline status above is awk's, so grab aws's separately.
+    awsExit=${PIPESTATUS[0]}
+    remoteExit=$(cat "$markerFile")
+    rm -f "$markerFile"
+    # The marker means the remote command ran to completion; its code wins.
+    if [[ -n "$remoteExit" ]]; then
+      exit "$remoteExit"
+    fi
+    if [[ "$awsExit" -ne 0 ]]; then
+      echo_stderr "aws ecs execute-command failed with exit code ${awsExit}."
+      exit "$awsExit"
+    fi
+    die "Could not detect the remote exit code (the remote command may not have started)."
+  fi
   "${cmd[@]}"
 }
 
