@@ -43,7 +43,12 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 
 - `--opt value` と `--opt=value` のどちらの形式も使える。
 - `--task` を省略した場合、RUNNING のタスクが複数あると対話選択になる。
-  完全に非対話で実行するには `--task` も指定する。
+  完全に非対話で実行するには `--task` も指定する。タスクARNは次のコマンドで取得できる。
+
+```bash
+aws ecs list-tasks --profile my-profile --cluster my-cluster \
+    --service-name my-service --desired-status RUNNING --output json | jq -r '.taskArns[0]'
+```
 
 ## コマンド実行
 
@@ -54,15 +59,15 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 ```bash
 # コンテナ上で一回きりのコマンドを実行
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
-       --container app --command "php -v"
+       --task "$TASK_ARN" --container app --command "php -v"
 
 # パイプもそのまま書ける（sh -c で包む必要はない）
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
-       --container app --command "php -v | head -n 1"
+       --task "$TASK_ARN" --container app --command "php -v | head -n 1"
 
 # リモートコマンドの終了コードが伝搬される
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
-       --container app --command 'exit 7' ; echo $?  # => 7
+       --task "$TASK_ARN" --container app --command 'exit 7' ; echo $?  # => 7
 ```
 
 情報メッセージ（日時、選択結果、実行コマンドライン）はすべて stderr に出力され、
@@ -76,7 +81,8 @@ stdout にはリモートコマンドの出力だけが流れる。そのため
 
 ```bash
 # localhost:13306 -> rds.example.com:3306
-./sssh --profile my-profile --cluster my-cluster --service my-service --container app \
+./sssh --profile my-profile --cluster my-cluster --service my-service \
+       --task "$TASK_ARN" --container app \
        --remote-host rds.example.com --remote-port 3306 --local-port 13306
 ```
 
