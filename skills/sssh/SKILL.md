@@ -47,15 +47,27 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 
 ## コマンド実行
 
+`--command` を指定すると、コマンドは `/bin/sh -c ...` でラップされて実行される。
+パイプ・リダイレクト・変数展開はそのまま書けて、リモートコマンドの終了コードが
+`sssh` の終了コードになる（v5.0.0以降）。成否判定が必要な自動処理にも使える。
+
 ```bash
 # コンテナ上で一回きりのコマンドを実行
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
        --container app --command "php -v"
 
-# パイプ、リダイレクト、変数展開を使う場合は明示的にシェルを経由する
+# パイプもそのまま書ける（sh -c で包む必要はない）
 ./sssh --profile my-profile --cluster my-cluster --service my-service \
-       --container app --command 'sh -c "php -v | head -n 1"'
+       --container app --command "php -v | head -n 1"
+
+# リモートコマンドの終了コードが伝搬される
+./sssh --profile my-profile --cluster my-cluster --service my-service \
+       --container app --command 'exit 7' ; echo $?  # => 7
 ```
+
+情報メッセージ（日時、選択結果、実行コマンドライン）はすべて stderr に出力され、
+stdout にはリモートコマンドの出力だけが流れる。そのため
+`./sssh --command 'php -v' | grep PHP` のようなパイプ処理がそのまま動く。
 
 ## ポートフォワード
 
@@ -90,8 +102,11 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 
 ## 注意事項
 
-- リモートコマンドの終了コードは `sssh` の終了コードに反映されない（ECS Exec の制限）。
-  成否判定が必要な処理や CI パイプラインには使わない。
+- 対話シェル（`--command` なし）の場合、シェルの終了コードは `sssh` に反映されない
+  （ECS Exec の制限。終了コード伝搬は `--command` 指定時のみ）。
+- ECS Exec は SSM エージェント内の PTY（擬似端末）でコマンドを実行するため、
+  stdout はテキスト前提（`\n` が `\r\n` に変換されることがある）。tar や gzip などの
+  バイナリ出力は壊れるので、ファイル転送は S3 などを経由する。
 - `--command` にパスワードやトークンを含めない。コマンドラインは画面表示・シェル履歴・
   CloudTrail に残り、ECS Exec のログ設定によっては CloudWatch Logs / S3 にも記録される。
 - プロファイルの output 形式が `json` 以外だとスクリプトがクラッシュする。
