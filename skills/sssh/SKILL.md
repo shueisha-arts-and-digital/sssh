@@ -43,11 +43,12 @@ Coding Agent が非対話で実行する場合は、必要な項目をすべて�
 
 - `--opt value` と `--opt=value` のどちらの形式も使える。
 - `--task` を省略した場合、RUNNING のタスクが複数あると対話選択になる。
-  完全に非対話で実行するには `--task` も指定する。タスクARNは次のコマンドで取得できる。
+  完全に非対話で実行するには `--task` も指定する。タスクARNは次のように取得して
+  変数に入れておくと、以降の例でそのまま使える。
 
 ```bash
-aws ecs list-tasks --profile my-profile --cluster my-cluster \
-    --service-name my-service --desired-status RUNNING --output json | jq -r '.taskArns[0]'
+TASK_ARN=$(aws ecs list-tasks --profile my-profile --cluster my-cluster \
+    --service-name my-service --desired-status RUNNING --output json | jq -r '.taskArns[0]')
 ```
 
 ## コマンド実行
